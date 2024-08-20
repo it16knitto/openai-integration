@@ -1,0 +1,22 @@
+version: '3'
+
+services:
+  build:
+    image: knitto_boiler_plate
+    restart: always
+    volumes:
+      - ./storage:/app/storage
+    working_dir: /app
+    ports:
+      - ${APP_PORT_HTTP}:8000
+    environment:
+     - APP_NAME=${APP_NAME}
+     - NODE_ENV=${NODE_ENV}
+     - APP_SECRET_KEY=${APP_SECRET_KEY}
+     - CAN_RUN_AUTOMATION_TEST=${CAN_RUN_AUTOMATION_TEST}
+     - DB_HOST_MYSQL=${DB_HOST_MYSQL}
+     - DB_NAME_MYSQL=${DB_NAME_MYSQL}
+     - DB_USER_MYSQL=${DB_USER_MYSQL}
+     - DB_PASS_MYSQL=${DB_PASS_MYSQL}
+     - DB_PORT_MYSQL=${DB_PORT_MYSQL}
+     - RABBITMQ_URL=${RABBITMQ_URL}
