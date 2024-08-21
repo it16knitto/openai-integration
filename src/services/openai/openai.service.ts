@@ -1,11 +1,30 @@
 import { openaiConfig } from '@root/libs/config';
 import mysqlConnection from '@root/libs/config/mysqlConnection';
+import { pdfs } from '@root/libs/helpers/pdf';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
 	apiKey: openaiConfig.apiKey
 });
+enum QuestionTheme {
+	FabricTypes = 'FabricTypes',
+	FabricCare = 'FabricCare',
+	Pricing = 'Pricing',
+	Availability = 'Availability',
+	CustomOrders = 'CustomOrders',
+	Shipping = 'Shipping',
+	ReturnsAndExchanges = 'ReturnsAndExchanges',
+	StoreLocation = 'StoreLocation',
+	FabricUsage = 'FabricUsage',
+	Promotions = 'Promotions',
+	Undefined = 'Undefined'
+}
 
+// Interface untuk menyimpan tema beserta skornya
+interface ThemeWithScore {
+	theme: QuestionTheme;
+	score: number; // Skor antara 0 dan 1, atau dalam persen
+}
 export async function getSQLPromptVStok() {
 	try {
 		const schemaInfo: any[] = await mysqlConnection.raw(
@@ -137,4 +156,112 @@ export async function getEmbeddings(texts) {
 		console.error('Error getting embeddings:', error);
 		return [];
 	}
+}
+
+export async function askQuestionWithRetrievePDF(prompt: string) {
+	let filename: string;
+
+	let answer: string;
+	for (const pdf of pdfs) {
+		const response = await openai.chat.completions.create({
+			model: 'gpt-4o',
+			messages: [
+				{ role: 'system', content: 'You are a helpful assistant.' },
+				{
+					role: 'user',
+					content: `Given the PDF: "${pdf.filename}", please answer the question: "${prompt}"
+					Additional Context:
+					- Use Indonesian Language
+					- Explain briefly concisely and clearly
+					- answer as if you were customer service and sales marketing or the owner
+					- if the answer is not found, say "Maaf, saya belum memiliki informasi tentang itu. Mungkin Anda bisa mencoba pertanyaan lain."
+					`
+				}
+			],
+			temperature: 0.5
+		});
+		answer = response.choices[0].message.content.trim();
+
+		const negativeWords = ['sorry', 'Maaf'];
+		if (!negativeWords.some((word) => answer.includes(word))) {
+			filename = pdf.filename;
+
+			break;
+		}
+	}
+	return { answer, filename };
+}
+
+export async function getQuestionThemesWithScores(
+	question: string
+): Promise<ThemeWithScore[]> {
+	try {
+		const prompt = `Classify the following question into one or more of the following themes: ${Object.values(
+			QuestionTheme
+		).join(', ')}. 
+        Provide a score between 0 and 100 for each theme indicating how well it fits the question. 
+        Format the result as "Theme: Score" pairs, separated by commas:\n\n"${question}"\n\nThemes and Scores:`;
+
+		const response = await openai.chat.completions.create({
+			model: 'gpt-4o',
+			messages: [
+				{ role: 'system', content: 'You are a helpful assistant.' },
+				{
+					role: 'user',
+					content: prompt
+				}
+			],
+			temperature: 0.5
+		});
+
+		const result = response.choices[0].message.content?.trim();
+		const themeScorePairs = result?.split(',').map((pair) => pair.trim()) || [];
+
+		const themesWithScores = themeScorePairs.map((pair) => {
+			const [theme, scoreStr] = pair.split(':').map((item) => item.trim());
+			const score = parseFloat(scoreStr) / 100; // Skor diubah menjadi antara 0 dan 1
+
+			const themeMap = {
+				FabricTypes: QuestionTheme.FabricTypes,
+				FabricCare: QuestionTheme.FabricCare,
+				Pricing: QuestionTheme.Pricing,
+				Availability: QuestionTheme.Availability,
+				CustomOrders: QuestionTheme.CustomOrders,
+				Shipping: QuestionTheme.Shipping,
+				ReturnsAndExchanges: QuestionTheme.ReturnsAndExchanges,
+				StoreLocation: QuestionTheme.StoreLocation,
+				FabricUsage: QuestionTheme.FabricUsage,
+				Promotions: QuestionTheme.Promotions
+			};
+			return { theme: themeMap[theme] || QuestionTheme.Undefined, score };
+		});
+
+		// Filter untuk menghapus 'Undefined' dan skor yang sangat rendah (misalnya, < 0.1)
+		return themesWithScores.filter(
+			(themeWithScore) =>
+				themeWithScore.theme !== QuestionTheme.Undefined &&
+				themeWithScore.score > 0
+		);
+	} catch (error) {
+		console.error('Error fetching themes with scores:', error);
+		return [{ theme: QuestionTheme.Undefined, score: 1 }];
+	}
+}
+
+export async function processAnswerFromTheme(
+	themes: QuestionTheme[],
+	prompt: string
+) {
+	let answer = '';
+	// for (const theme of themes) {
+	// 	switch (theme) {
+	// 		case QuestionTheme.FabricTypes:
+	// 			answer = await getAnswerFromTheme(theme, prompt);
+	// 			break;
+	// 		case QuestionTheme.FabricCare:
+	// 			answer = await getAnswerFromTheme(theme, prompt);
+	// 			break;
+	// 	}
+	// }
+	return answer;
 }

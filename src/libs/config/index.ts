@@ -10,6 +10,7 @@ export const NODE_ENV = process.env.NODE_ENV ?? 'development';
 export const APP_SECRET_KEY = process.env.APP_SECRET_KEY || 'secret';
 export const APP_PORT_HTTP = String(process.env.APP_PORT_HTTP) || '8000';
 export const APP_EXPOSE_DOCS = Boolean(process.env.APP_EXPOSE_DOCS) || true;
+export const APP_PORT_WS = process.env.APP_PORT_WS || '8001';
 
 export const mysqlConfig = {
 	HOST: process.env.DB_HOST_MYSQL || 'localhost',

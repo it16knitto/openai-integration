@@ -1,12 +1,30 @@
 import { requestHandler, Router } from '@knittotextile/knitto-http';
 import {
+	aiAskQuestionRetrievePDF,
 	aiChatGenerate,
 	aiChatGenerateWithCSV,
-	aiChatGenerateWithPDF
+	aiChatGenerateWithPDF,
+	aiConvertationPinecone,
+	aiImportCSVToPinecone
 } from './ai.controller';
 import multer from 'multer';
+import path from 'path';
+import crypto from 'crypto';
+const storage = multer.diskStorage({
+	destination: function (req, file, cb) {
+		cb(null, 'uploads/');
+	},
+	filename: function (req, file, cb) {
+		const uniqueSuffix =
+			Date.now() + '-' + crypto.randomBytes(4).toString('hex');
+		cb(
+			null,
+			file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname)
+		);
+	}
+});
+const upload = multer({ storage });
 
-const upload = multer({ dest: 'uploads/' });
 const defaultRouter = Router();
 
 /**
@@ -50,5 +68,16 @@ defaultRouter.post(
 	'/ai/chat-ai-with-csv',
 	upload.single('csv'),
 	requestHandler(aiChatGenerateWithCSV)
+);
+
+defaultRouter.post(
+	'/ai/import-csv',
+	upload.single('csv'),
+	requestHandler(aiImportCSVToPinecone)
+);
+defaultRouter.post('/ai/pinecone', requestHandler(aiConvertationPinecone));
+defaultRouter.post(
+	'/ai/retrieve-pdf',
+	requestHandler(aiAskQuestionRetrievePDF)
 );
 export default defaultRouter;

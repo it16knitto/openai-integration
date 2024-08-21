@@ -3,6 +3,8 @@ import { dump } from '@knittotextile/knitto-core-backend';
 import httpServer from '@http/index';
 // import messageBroker from '@root/app/messageBroker';
 import mysqlConnection from './libs/config/mysqlConnection';
+
+import { startWs } from './app/ws';
 // import rabbitConnection from './libs/config/rabbitConnection';
 
 (async () => {
@@ -10,9 +12,10 @@ import mysqlConnection from './libs/config/mysqlConnection';
 		// start infrastructure
 		await mysqlConnection.init();
 		// await rabbitConnection.init();
-
+		// await indexPDFs();
 		// start application
 		await httpServer();
+		await startWs();
 		// await messageBroker();
 	} catch (error) {
 		dump(error);

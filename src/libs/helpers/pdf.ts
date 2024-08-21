@@ -1,4 +1,9 @@
 import { PDFDocument, rgb } from 'pdf-lib';
+import fs from 'fs';
+import path from 'path';
+import pdfParse from 'pdf-parse';
+
+export const pdfs: any[] = [];
 
 export async function createPDF(dataArray: any[]) {
 	const pdfDoc = await PDFDocument.create();
@@ -50,4 +55,20 @@ export async function createPDF(dataArray: any[]) {
 	const pdfBytes = await pdfDoc.save();
 	const base64String = Buffer.from(pdfBytes).toString('base64');
 	return base64String;
+}
+export async function indexPDFs() {
+	const pdfDir = './storage/static/private/pdfs';
+	const files = fs.readdirSync(pdfDir);
+
+	for (const file of files) {
+		const filePath = path.join(pdfDir, file);
+		const dataBuffer = fs.readFileSync(filePath);
+		const pdfData = await pdfParse(dataBuffer);
+
+		pdfs.push({
+			filename: file,
+			text: pdfData.text,
+			path: filePath
+		});
+	}
 }

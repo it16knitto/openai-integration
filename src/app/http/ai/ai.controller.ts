@@ -3,6 +3,7 @@ import mysqlConnection from '@root/libs/config/mysqlConnection';
 import { fetchFlowise } from '@root/libs/helpers/fetch';
 import {
 	askQuestionWithFile,
+	askQuestionWithRetrievePDF,
 	convertToNaturalLanguage,
 	generateSQLQuery,
 	getSQLPromptVStok
@@ -11,6 +12,10 @@ import fs from 'fs';
 import pdfParse from 'pdf-parse';
 import csv from 'csv-parser';
 import { createPDF } from '@root/libs/helpers/pdf';
+import {
+	generateAndSearch,
+	processCSV
+} from '@root/services/pinecone/pinecone.service';
 
 async function extractTextFromPDF(filePath: string): Promise<string> {
 	const dataBuffer = fs.readFileSync(filePath);
@@ -88,4 +93,20 @@ export const aiChatGenerateWithCSV: TRequestFunction = async (req) => {
 	const answer = await askQuestionWithFile(csvText, prompt);
 
 	return { result: { prompt, answer } };
+};
+
+export const aiImportCSVToPinecone: TRequestFunction = async (req) => {
+	const filePath = req.file.path;
+
+	processCSV(filePath);
+};
+export const aiConvertationPinecone: TRequestFunction = async (req) => {
+	const { prompt } = req.body;
+	const data = await generateAndSearch(prompt);
+	return { result: data };
+};
+export const aiAskQuestionRetrievePDF: TRequestFunction = async (req) => {
+	const { prompt } = req.body;
+	const data = await askQuestionWithRetrievePDF(prompt);
+	return { result: data };
 };
