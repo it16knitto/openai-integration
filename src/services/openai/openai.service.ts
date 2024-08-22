@@ -1,28 +1,18 @@
 import { openaiConfig } from '@root/libs/config';
 import mysqlConnection from '@root/libs/config/mysqlConnection';
 import { pdfs } from '@root/libs/helpers/pdf';
+import TopicRepository from '@root/repositories/Topic.repository';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
 	apiKey: openaiConfig.apiKey
 });
-enum QuestionTheme {
-	FabricTypes = 'FabricTypes',
-	FabricCare = 'FabricCare',
-	Pricing = 'Pricing',
-	Availability = 'Availability',
-	CustomOrders = 'CustomOrders',
-	Shipping = 'Shipping',
-	ReturnsAndExchanges = 'ReturnsAndExchanges',
-	StoreLocation = 'StoreLocation',
-	FabricUsage = 'FabricUsage',
-	Promotions = 'Promotions',
-	Undefined = 'Undefined'
-}
-
+export const typesThemes: any[] = [];
+const negativeWords = ['sorry', 'Maaf'];
 // Interface untuk menyimpan tema beserta skornya
-interface ThemeWithScore {
-	theme: QuestionTheme;
+interface TopicWithScore {
+	id: number;
+	type: string;
 	score: number; // Skor antara 0 dan 1, atau dalam persen
 }
 export async function getSQLPromptVStok() {
@@ -169,7 +159,7 @@ export async function askQuestionWithRetrievePDF(prompt: string) {
 				{ role: 'system', content: 'You are a helpful assistant.' },
 				{
 					role: 'user',
-					content: `Given the PDF: "${pdf.filename}", please answer the question: "${prompt}"
+					content: `Given the PDF: "${pdf.text}", please answer the question: "${prompt}"
 					Additional Context:
 					- Use Indonesian Language
 					- Explain briefly concisely and clearly
@@ -182,7 +172,6 @@ export async function askQuestionWithRetrievePDF(prompt: string) {
 		});
 		answer = response.choices[0].message.content.trim();
 
-		const negativeWords = ['sorry', 'Maaf'];
 		if (!negativeWords.some((word) => answer.includes(word))) {
 			filename = pdf.filename;
 
@@ -194,11 +183,11 @@ export async function askQuestionWithRetrievePDF(prompt: string) {
 
 export async function getQuestionThemesWithScores(
 	question: string
-): Promise<ThemeWithScore[]> {
+): Promise<TopicWithScore[]> {
 	try {
-		const prompt = `Classify the following question into one or more of the following themes: ${Object.values(
-			QuestionTheme
-		).join(', ')}. 
+		const prompt = `Classify the following question into one or more of the following themes: ${typesThemes
+			.map((theme) => theme.name)
+			.join(', ')}. 
         Provide a score between 0 and 100 for each theme indicating how well it fits the question. 
         Format the result as "Theme: Score" pairs, separated by commas:\n\n"${question}"\n\nThemes and Scores:`;
 
@@ -213,7 +202,6 @@ export async function getQuestionThemesWithScores(
 			],
 			temperature: 0.5
 		});
-
 		const result = response.choices[0].message.content?.trim();
 		const themeScorePairs = result?.split(',').map((pair) => pair.trim()) || [];
 
@@ -221,47 +209,153 @@ export async function getQuestionThemesWithScores(
 			const [theme, scoreStr] = pair.split(':').map((item) => item.trim());
 			const score = parseFloat(scoreStr) / 100; // Skor diubah menjadi antara 0 dan 1
 
-			const themeMap = {
-				FabricTypes: QuestionTheme.FabricTypes,
-				FabricCare: QuestionTheme.FabricCare,
-				Pricing: QuestionTheme.Pricing,
-				Availability: QuestionTheme.Availability,
-				CustomOrders: QuestionTheme.CustomOrders,
-				Shipping: QuestionTheme.Shipping,
-				ReturnsAndExchanges: QuestionTheme.ReturnsAndExchanges,
-				StoreLocation: QuestionTheme.StoreLocation,
-				FabricUsage: QuestionTheme.FabricUsage,
-				Promotions: QuestionTheme.Promotions
-			};
-			return { theme: themeMap[theme] || QuestionTheme.Undefined, score };
-		});
+			const themeMap = typesThemes.reduce((acc, theme) => {
+				acc[theme.name] = theme.name;
+				return acc;
+			}, {});
 
-		// Filter untuk menghapus 'Undefined' dan skor yang sangat rendah (misalnya, < 0.1)
-		return themesWithScores.filter(
-			(themeWithScore) =>
-				themeWithScore.theme !== QuestionTheme.Undefined &&
-				themeWithScore.score > 0
-		);
+			return {
+				id: typesThemes.find((t) => t.name === theme)?.id || 0,
+				type: themeMap[theme] || 'Undefined',
+				score
+			};
+		});
+		return themesWithScores
+			.filter(
+				(themeWithScore) =>
+					themeWithScore.type !== 'Undefined' && themeWithScore.score > 0.1
+			)
+			.sort((a, b) => b.score - a.score);
 	} catch (error) {
 		console.error('Error fetching themes with scores:', error);
-		return [{ theme: QuestionTheme.Undefined, score: 1 }];
+		return [{ id: 0, type: 'Undefined', score: 1 }];
 	}
 }
 
 export async function processAnswerFromTheme(
-	themes: QuestionTheme[],
+	topicsWithScores: TopicWithScore[],
 	prompt: string
 ) {
-	let answer = '';
-	// for (const theme of themes) {
-	// 	switch (theme) {
-	// 		case QuestionTheme.FabricTypes:
-	// 			answer = await getAnswerFromTheme(theme, prompt);
-	// 			break;
-	// 		case QuestionTheme.FabricCare:
-	// 			answer = await getAnswerFromTheme(theme, prompt);
-	// 			break;
-	// 	}
-	// }
-	return answer;
+	let result: any;
+	for (const theme of topicsWithScores) {
+		result = await askQuestionWithDocumentTopic(prompt, theme.id);
+		if (!negativeWords.some((word) => result.answer.includes(word))) {
+			break;
+		}
+	}
+	return result;
+}
+export async function askQuestionWithDocumentTopic(
+	prompt: string,
+	topicId: number
+) {
+	const documentTopic: any[] = await mysqlConnection.raw(
+		`SELECT document.id, document.parse_text, document.filename
+		FROM
+		document join relation_document_topic on document.id = relation_document_topic.document_id
+		WHERE
+		relation_document_topic.topic_id = ?`,
+		[topicId]
+	);
+	if (documentTopic.length === 0) {
+		return {
+			answer:
+				'Maaf, saya belum memiliki informasi tentang itu. Mungkin Anda bisa mencoba pertanyaan lain.',
+			filename: ''
+		};
+	}
+	let filename: string;
+	let answer: string;
+	for (const document of documentTopic) {
+		const response = await openai.chat.completions.create({
+			model: 'gpt-4o',
+			messages: [
+				{ role: 'system', content: document.parse_text },
+				{
+					role: 'user',
+					content: `Please answer the question: "${prompt}"
+					Additional Context:
+					- Use Indonesian Language
+					- Explain briefly, concisely, and clearly
+					- Answer as if you were a customer service representative, sales marketer, or the owner
+					- If the answer is not found, say "Maaf, saya belum memiliki informasi tentang itu. Mungkin Anda bisa mencoba pertanyaan lain."
+					`
+				}
+			],
+			temperature: 0.5
+		});
+		answer = response.choices[0].message.content.trim();
+
+		if (!negativeWords.some((word) => answer.includes(word))) {
+			filename = document.filename;
+
+			break;
+		}
+	}
+
+	return { answer, filename };
+}
+// export async function getDocumentThemesWithScores(
+// 	document_parse_text: string
+// ): Promise<ThemeWithScore[]> {
+// 	try {
+// 		const prompt = `Classify the following text into one or more of the following themes: ${Object.values(
+// 			QuestionTheme
+// 		).join(', ')}.
+//         Provide a score between 0 and 100 for each theme indicating how well it fits the text.
+// 		If the text does not clearly fall into any of these themes, classify it as Undefined.
+//         Format the result as "Theme: Score" pairs, separated by commas:\n\n"${document_parse_text}"\n\nThemes and Scores:`;
+
+// 		const response = await openai.chat.completions.create({
+// 			model: 'gpt-4o',
+// 			messages: [
+// 				{ role: 'system', content: 'You are a helpful assistant.' },
+// 				{
+// 					role: 'user',
+// 					content: prompt
+// 				}
+// 			],
+// 			temperature: 0.2
+// 		});
+
+// 		const result = response.choices[0].message.content?.trim();
+// 		const themeScorePairs = result?.split(',').map((pair) => pair.trim()) || [];
+
+// 		const themesWithScores = themeScorePairs.map((pair) => {
+// 			const [theme, scoreStr] = pair.split(':').map((item) => item.trim());
+// 			const score = parseFloat(scoreStr) / 100; // Skor diubah menjadi antara 0 dan 1
+
+// 			const themeMap = {
+// 				FabricTypes: QuestionTheme.FabricTypes,
+// 				FabricCare: QuestionTheme.FabricCare,
+// 				Pricing: QuestionTheme.Pricing,
+// 				Availability: QuestionTheme.Availability,
+// 				CustomOrders: QuestionTheme.CustomOrders,
+// 				Shipping: QuestionTheme.Shipping,
+// 				ReturnsAndExchanges: QuestionTheme.ReturnsAndExchanges,
+// 				StoreLocation: QuestionTheme.StoreLocation,
+// 				FabricUsage: QuestionTheme.FabricUsage,
+// 				Promotions: QuestionTheme.Promotions
+// 			};
+// 			return { theme: themeMap[theme] || QuestionTheme.Undefined, score };
+// 		});
+
+// 		// Filter untuk menghapus 'Undefined' dan skor yang sangat rendah (misalnya, < 0.1)
+// 		return themesWithScores.filter(
+// 			(themeWithScore) =>
+// 				themeWithScore.theme !== QuestionTheme.Undefined &&
+// 				themeWithScore.score > 0
+// 		);
+// 	} catch (error) {
+// 		console.error('Error fetching themes with scores:', error);
+// 		return [{ theme: QuestionTheme.Undefined, score: 1 }];
+// 	}
+// }
+
+export async function getTypes() {
+	const topicRepository = new TopicRepository(mysqlConnection);
+	const types: any[] = await topicRepository.findAll();
+	if (types.length > 0) {
+		typesThemes.push(...types);
+	}
 }

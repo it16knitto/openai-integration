@@ -9,19 +9,12 @@ import {
 	getSQLPromptVStok
 } from '@root/services/openai/openai.service';
 import fs from 'fs';
-import pdfParse from 'pdf-parse';
 import csv from 'csv-parser';
-import { createPDF } from '@root/libs/helpers/pdf';
+import { createPDF, extractTextFromPDF } from '@root/libs/helpers/pdf';
 import {
 	generateAndSearch,
 	processCSV
 } from '@root/services/pinecone/pinecone.service';
-
-async function extractTextFromPDF(filePath: string): Promise<string> {
-	const dataBuffer = fs.readFileSync(filePath);
-	const data = await pdfParse(dataBuffer);
-	return data.text;
-}
 
 async function extractDataFromCSV(filePath: string): Promise<string[]> {
 	const rows: string[] = [];

@@ -5,8 +5,8 @@ import jwt from 'jsonwebtoken';
 import { logger } from '@knittotextile/knitto-core-backend';
 import { APP_SECRET_KEY } from './config';
 import {
-	askQuestionWithRetrievePDF,
-	getQuestionThemesWithScores
+	getQuestionThemesWithScores,
+	processAnswerFromTheme
 } from '@root/services/openai/openai.service';
 export interface WsMessageRequest {
 	type: string;
@@ -78,8 +78,10 @@ export class WsServer {
 				} else if (data.type === 'question') {
 					//nanti disini handle type AI nya
 					const response = await getQuestionThemesWithScores(data.message);
+
+					const result = await processAnswerFromTheme(response, data.message);
 					this.sendMessageToUser(this.clients.get(ws), {
-						message: JSON.stringify(response),
+						message: JSON.stringify(result),
 						// additional_files: [
 						// 	{
 						// 		filename: response.filename,

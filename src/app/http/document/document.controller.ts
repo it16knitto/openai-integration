@@ -1,24 +1,35 @@
 import { TRequestFunction } from '@knittotextile/knitto-http';
 import mysqlConnection from '@root/libs/config/mysqlConnection';
-import * as crypto from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
-const calculateHash = (filePath, callback) => {
-	const hash = crypto.createHash('sha256');
-	const stream = fs.createReadStream(filePath);
-
-	stream.on('data', (chunk) => hash.update(chunk));
-	stream.on('end', () => callback(null, hash.digest('hex')));
-	stream.on('error', (err) => callback(err));
-};
+import { extractTextFromPDF } from '@root/libs/helpers/pdf';
+import DocumentRepository from '@root/repositories/Document.repository';
+import RelationDocumentTopicRepository from '@root/repositories/RelationDocumentTopic.repository';
 
 export const uploadDocument: TRequestFunction = async (req) => {
 	const filePath = req.file.path;
-	console.log(req.file);
+	const type = req.body.type;
+	const typeArray = JSON.parse(type);
 
-	return { result: filePath };
+	const text = await extractTextFromPDF(filePath);
+
+	await mysqlConnection.transaction(async (trx) => {
+		const documentRepository = new DocumentRepository(trx);
+		const document: any = await documentRepository.insert({
+			filename: req.file.filename,
+			hash_file: 'belum',
+			parse_text: text
+		});
+		const documentId = document.insertId;
+		if (typeArray.length > 0) {
+			const relationDocumentTopicRepository =
+				new RelationDocumentTopicRepository(trx);
+			await relationDocumentTopicRepository.createMany(typeArray, documentId);
+		}
+	});
+	return { result: true };
 };
-export const typeFindAll: TRequestFunction = async (req) => {
-	const data = await mysqlConnection.raw('SELECT * FROM type');
+export const typeFindAll: TRequestFunction = async () => {
+	const data = await mysqlConnection.raw(
+		'SELECT * FROM type order by name asc'
+	);
 	return { result: data };
 };
