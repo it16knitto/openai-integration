@@ -43,26 +43,26 @@ export class WsServer {
 	}
 
 	handleConnection(ws: WebSocket, request: http.IncomingMessage) {
-		const token = request.url.split('?token=')[1];
+		// const token = request.url.split('?token=')[1];
 
-		if (!token) {
-			ws.send(JSON.stringify({ status: 'Error', message: 'Token mismatch' }));
-			ws.close();
-		}
+		// if (!token) {
+		// 	ws.send(JSON.stringify({ status: 'Error', message: 'Token mismatch' }));
+		// 	ws.close();
+		// }
 
-		jwt.verify(token, APP_SECRET_KEY, (err: any, decode: any) => {
-			if (err) {
-				let msg = 'Invalid Credential';
+		// jwt.verify(token, APP_SECRET_KEY, (err: any, decode: any) => {
+		// 	if (err) {
+		// 		let msg = 'Invalid Credential';
 
-				if (err.name === 'TokenExpiredError') msg = err.message;
+		// 		if (err.name === 'TokenExpiredError') msg = err.message;
 
-				ws.send(JSON.stringify({ status: 'Error', message: msg }));
-				ws.close();
-			} else {
-				this.clients.set(ws, decode.id as number);
-			}
-		});
-
+		// 		ws.send(JSON.stringify({ status: 'Error', message: msg }));
+		// 		ws.close();
+		// 	} else {
+		// 		this.clients.set(ws, decode.id as number);
+		// 	}
+		// });
+		this.clients.set(ws, 0);
 		ws.on('error', (error) => {
 			logger.error({ stack: error.stack, msg: error.message });
 		});
@@ -78,19 +78,13 @@ export class WsServer {
 				} else if (data.type === 'question') {
 					//nanti disini handle type AI nya
 					const response = await getQuestionThemesWithScores(data.message);
+					console.log(response);
 
-					const result = await processAnswerFromTheme(response, data.message);
-					this.sendMessageToUser(this.clients.get(ws), {
-						message: JSON.stringify(result),
-						// additional_files: [
-						// 	{
-						// 		filename: response.filename,
-						// 		link: response.filename,
-						// 		file_type: 'pdf'
-						// 	}
-						// ],
-						from_user_id: 0
-					});
+					const result: WsMessageResponse = await processAnswerFromTheme(
+						response,
+						data.message
+					);
+					this.sendMessageToUser(this.clients.get(ws), result);
 				}
 			} catch (error: any) {
 				ws.send(

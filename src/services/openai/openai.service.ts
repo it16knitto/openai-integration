@@ -1,6 +1,7 @@
 import { openaiConfig } from '@root/libs/config';
 import mysqlConnection from '@root/libs/config/mysqlConnection';
 import { pdfs } from '@root/libs/helpers/pdf';
+import { WsMessageResponse } from '@root/libs/WsServer';
 import TopicRepository from '@root/repositories/Topic.repository';
 import OpenAI from 'openai';
 
@@ -11,7 +12,7 @@ export const typesThemes: any[] = [];
 const negativeWords = ['sorry', 'Maaf'];
 // Interface untuk menyimpan tema beserta skornya
 interface TopicWithScore {
-	id: number;
+	id?: number;
 	type: string;
 	score: number; // Skor antara 0 dan 1, atau dalam persen
 }
@@ -187,7 +188,7 @@ export async function getQuestionThemesWithScores(
 	try {
 		const prompt = `Classify the following question into one or more of the following themes: ${typesThemes
 			.map((theme) => theme.name)
-			.join(', ')}. 
+			.join(', ')}, and other relevant themes. 
         Provide a score between 0 and 100 for each theme indicating how well it fits the question. 
         Format the result as "Theme: Score" pairs, separated by commas:\n\n"${question}"\n\nThemes and Scores:`;
 
@@ -235,15 +236,37 @@ export async function getQuestionThemesWithScores(
 export async function processAnswerFromTheme(
 	topicsWithScores: TopicWithScore[],
 	prompt: string
-) {
+): Promise<WsMessageResponse> {
 	let result: any;
+	if (topicsWithScores.length === 0) {
+		return {
+			from_user_id: 0,
+			message:
+				'Maaf, saya belum memiliki informasi tentang itu. Mungkin Anda bisa mencoba pertanyaan lain.',
+			additional_files: []
+		};
+	}
+
 	for (const theme of topicsWithScores) {
+		if (theme.type === 'Greeting') {
+			return {
+				from_user_id: 0,
+				message: 'Halo, apa yang bisa saya bantu?',
+				additional_files: []
+			};
+		}
 		result = await askQuestionWithDocumentTopic(prompt, theme.id);
 		if (!negativeWords.some((word) => result.answer.includes(word))) {
 			break;
 		}
 	}
-	return result;
+	return {
+		from_user_id: 0,
+		message: result.answer,
+		additional_files: [
+			{ filename: result.filename, file_type: result.filename ? 'pdf' : '' }
+		]
+	};
 }
 export async function askQuestionWithDocumentTopic(
 	prompt: string,
@@ -295,62 +318,63 @@ export async function askQuestionWithDocumentTopic(
 
 	return { answer, filename };
 }
-// export async function getDocumentThemesWithScores(
-// 	document_parse_text: string
-// ): Promise<ThemeWithScore[]> {
-// 	try {
-// 		const prompt = `Classify the following text into one or more of the following themes: ${Object.values(
-// 			QuestionTheme
-// 		).join(', ')}.
-//         Provide a score between 0 and 100 for each theme indicating how well it fits the text.
-// 		If the text does not clearly fall into any of these themes, classify it as Undefined.
-//         Format the result as "Theme: Score" pairs, separated by commas:\n\n"${document_parse_text}"\n\nThemes and Scores:`;
+export async function getDocoumentTopicWithScores(
+	document: string
+): Promise<TopicWithScore[]> {
+	try {
+		const prompt = `Classify the following document into one or more of the following themes: ${typesThemes
+			.map((theme) => theme.name)
+			.join(', ')}, and other relevant themes. 
+			Provide a score between 0 and 100 for each theme indicating how well it fits the document.
+			Format the result as "Theme: Score" pairs, separated by commas:
+			\`\`\`
+			${document}
+			\`\`\`
+			Themes and Scores:`;
 
-// 		const response = await openai.chat.completions.create({
-// 			model: 'gpt-4o',
-// 			messages: [
-// 				{ role: 'system', content: 'You are a helpful assistant.' },
-// 				{
-// 					role: 'user',
-// 					content: prompt
-// 				}
-// 			],
-// 			temperature: 0.2
-// 		});
+		const response = await openai.chat.completions.create({
+			model: 'gpt-4',
+			messages: [
+				{ role: 'system', content: 'You are a helpful assistant.' },
+				{
+					role: 'user',
+					content: prompt
+				}
+			],
+			temperature: 0.5,
+			max_tokens: 150
+		});
+		const result = response.choices[0].message.content?.trim();
 
-// 		const result = response.choices[0].message.content?.trim();
-// 		const themeScorePairs = result?.split(',').map((pair) => pair.trim()) || [];
+		const themeScorePairs = result?.split(',').map((pair) => pair.trim()) || [];
 
-// 		const themesWithScores = themeScorePairs.map((pair) => {
-// 			const [theme, scoreStr] = pair.split(':').map((item) => item.trim());
-// 			const score = parseFloat(scoreStr) / 100; // Skor diubah menjadi antara 0 dan 1
+		const themesWithScores = themeScorePairs.map((pair) => {
+			const [theme, scoreStr] = pair.split(':').map((item) => item.trim());
+			const score = parseFloat(scoreStr) / 100; // Skor diubah menjadi antara 0 dan 1
 
-// 			const themeMap = {
-// 				FabricTypes: QuestionTheme.FabricTypes,
-// 				FabricCare: QuestionTheme.FabricCare,
-// 				Pricing: QuestionTheme.Pricing,
-// 				Availability: QuestionTheme.Availability,
-// 				CustomOrders: QuestionTheme.CustomOrders,
-// 				Shipping: QuestionTheme.Shipping,
-// 				ReturnsAndExchanges: QuestionTheme.ReturnsAndExchanges,
-// 				StoreLocation: QuestionTheme.StoreLocation,
-// 				FabricUsage: QuestionTheme.FabricUsage,
-// 				Promotions: QuestionTheme.Promotions
-// 			};
-// 			return { theme: themeMap[theme] || QuestionTheme.Undefined, score };
-// 		});
+			// const themeMap = typesThemes.reduce((acc, theme) => {
+			// 	acc[theme.name] = theme.name;
+			// 	return acc;
+			// }, {});
 
-// 		// Filter untuk menghapus 'Undefined' dan skor yang sangat rendah (misalnya, < 0.1)
-// 		return themesWithScores.filter(
-// 			(themeWithScore) =>
-// 				themeWithScore.theme !== QuestionTheme.Undefined &&
-// 				themeWithScore.score > 0
-// 		);
-// 	} catch (error) {
-// 		console.error('Error fetching themes with scores:', error);
-// 		return [{ theme: QuestionTheme.Undefined, score: 1 }];
-// 	}
-// }
+			return {
+				type: theme,
+				score
+			};
+		});
+		console.log(result);
+
+		return themesWithScores
+			.filter(
+				(themeWithScore) =>
+					themeWithScore.type !== 'Undefined' && themeWithScore.score > 0.1
+			)
+			.sort((a, b) => b.score - a.score);
+	} catch (error) {
+		console.error('Error fetching themes with scores:', error);
+		return [{ id: 0, type: 'Undefined', score: 1 }];
+	}
+}
 
 export async function getTypes() {
 	const topicRepository = new TopicRepository(mysqlConnection);
