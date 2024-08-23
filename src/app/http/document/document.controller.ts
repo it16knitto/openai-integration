@@ -28,9 +28,9 @@ export const uploadDocument: TRequestFunction = async (req) => {
 	});
 	return { result: true };
 };
-export const typeFindAll: TRequestFunction = async () => {
+export const topicFindAll: TRequestFunction = async () => {
 	const data = await mysqlConnection.raw(
-		'SELECT * FROM type order by name asc'
+		'SELECT id, name FROM topic where deleted_at is null order by name asc '
 	);
 	return { result: data };
 };

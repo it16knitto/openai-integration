@@ -78,7 +78,6 @@ export class WsServer {
 				} else if (data.type === 'question') {
 					//nanti disini handle type AI nya
 					const response = await getQuestionThemesWithScores(data.message);
-					console.log(response);
 
 					const result: WsMessageResponse = await processAnswerFromTheme(
 						response,

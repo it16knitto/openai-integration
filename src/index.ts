@@ -5,7 +5,7 @@ import httpServer from '@http/index';
 import mysqlConnection from './libs/config/mysqlConnection';
 
 import { startWs } from './app/ws';
-import { getTypes } from './services/openai/openai.service';
+import { getTopics } from './services/openai/openai.service';
 // import rabbitConnection from './libs/config/rabbitConnection';
 
 (async () => {
@@ -14,7 +14,7 @@ import { getTypes } from './services/openai/openai.service';
 		await mysqlConnection.init();
 		// await rabbitConnection.init();
 		// await indexPDFs();
-		await getTypes();
+		await getTopics();
 		// start application
 		await httpServer();
 		await startWs();

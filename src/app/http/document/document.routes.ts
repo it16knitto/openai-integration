@@ -5,9 +5,10 @@ import { Router } from '@knittotextile/knitto-http';
 import { requestHandler } from '@knittotextile/knitto-http';
 import {
 	documentTopicSuggestion,
-	typeFindAll,
+	topicFindAll,
 	uploadDocument
 } from './document.controller';
+import { getTopics } from '@root/services/openai/openai.service';
 const storage = multer.diskStorage({
 	destination: function (_, __, cb) {
 		cb(null, 'uploads/');
@@ -34,5 +35,6 @@ defaultRouter.post(
 	upload.single('file'),
 	requestHandler(documentTopicSuggestion)
 );
-defaultRouter.get('/type', requestHandler(typeFindAll));
+defaultRouter.get('/topic', requestHandler(topicFindAll));
+defaultRouter.get('/topic/fetch', requestHandler(getTopics));
 export default defaultRouter;

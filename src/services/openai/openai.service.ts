@@ -8,7 +8,7 @@ import OpenAI from 'openai';
 const openai = new OpenAI({
 	apiKey: openaiConfig.apiKey
 });
-export const typesThemes: any[] = [];
+export const topics: any[] = [];
 const negativeWords = ['sorry', 'Maaf'];
 // Interface untuk menyimpan tema beserta skornya
 interface TopicWithScore {
@@ -186,7 +186,7 @@ export async function getQuestionThemesWithScores(
 	question: string
 ): Promise<TopicWithScore[]> {
 	try {
-		const prompt = `Classify the following question into one or more of the following themes: ${typesThemes
+		const prompt = `Classify the following question into one or more of the following themes: ${topics
 			.map((theme) => theme.name)
 			.join(', ')}, and other relevant themes. 
         Provide a score between 0 and 100 for each theme indicating how well it fits the question. 
@@ -210,17 +210,18 @@ export async function getQuestionThemesWithScores(
 			const [theme, scoreStr] = pair.split(':').map((item) => item.trim());
 			const score = parseFloat(scoreStr) / 100; // Skor diubah menjadi antara 0 dan 1
 
-			const themeMap = typesThemes.reduce((acc, theme) => {
+			const themeMap = topics.reduce((acc, theme) => {
 				acc[theme.name] = theme.name;
 				return acc;
 			}, {});
 
 			return {
-				id: typesThemes.find((t) => t.name === theme)?.id || 0,
+				id: topics.find((t) => t.name === theme)?.id ?? null,
 				type: themeMap[theme] || 'Undefined',
 				score
 			};
 		});
+
 		return themesWithScores
 			.filter(
 				(themeWithScore) =>
@@ -242,7 +243,7 @@ export async function processAnswerFromTheme(
 		return {
 			from_user_id: 0,
 			message:
-				'Maaf, saya belum memiliki informasi tentang itu. Mungkin Anda bisa mencoba pertanyaan lain.',
+				'Maaf, saya belum memiliki informasi tentang itu. Mungkin Anda bisa mencoba pertanyaan lain. [Silahkan coba lagi]',
 			additional_files: []
 		};
 	}
@@ -322,7 +323,7 @@ export async function getDocoumentTopicWithScores(
 	document: string
 ): Promise<TopicWithScore[]> {
 	try {
-		const prompt = `Classify the following document into one or more of the following themes: ${typesThemes
+		const prompt = `Classify the following document into one or more of the following themes: ${topics
 			.map((theme) => theme.name)
 			.join(', ')}, and other relevant themes. 
 			Provide a score between 0 and 100 for each theme indicating how well it fits the document.
@@ -358,16 +359,16 @@ export async function getDocoumentTopicWithScores(
 			// }, {});
 
 			return {
+				id: topics.find((t) => t.name === theme)?.id ?? null,
 				type: theme,
 				score
 			};
 		});
-		console.log(result);
 
 		return themesWithScores
 			.filter(
 				(themeWithScore) =>
-					themeWithScore.type !== 'Undefined' && themeWithScore.score > 0.1
+					themeWithScore.type !== 'Undefined' && themeWithScore.score > 0
 			)
 			.sort((a, b) => b.score - a.score);
 	} catch (error) {
@@ -376,10 +377,10 @@ export async function getDocoumentTopicWithScores(
 	}
 }
 
-export async function getTypes() {
+export async function getTopics() {
 	const topicRepository = new TopicRepository(mysqlConnection);
 	const types: any[] = await topicRepository.findAll();
 	if (types.length > 0) {
-		typesThemes.push(...types);
+		topics.push(...types);
 	}
 }
